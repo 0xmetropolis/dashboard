@@ -81,7 +81,7 @@ def get_backend_api_client():
             if not BACKEND_API_HOST.startswith(('http://', 'https://')):
                 base_url = f"http://{BACKEND_API_HOST}:{BACKEND_API_PORT}"
             else:
-                base_url = f"{BACKEND_API_HOST}:{BACKEND_API_PORT}"
+                base_url = BACKEND_API_HOST.rstrip('/')
 
             client = SyncHummingbotAPIClient(
                 base_url=base_url,
