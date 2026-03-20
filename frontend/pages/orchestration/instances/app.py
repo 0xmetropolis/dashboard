@@ -249,6 +249,13 @@ def render_bot_card(bot_name):
                                     stop_controllers(bot_name, selected_active)
                                     time.sleep(1)
 
+                        with st.expander("🔧 Active Controller Parameters"):
+                            for ctrl_info in active_controllers:
+                                ctrl_id = ctrl_info["_controller_id"]
+                                config = next((c for c in controller_configs if c.get("id") == ctrl_id), {})
+                                st.markdown(f"**{ctrl_info['Controller']}** — `{ctrl_id}`")
+                                st.json(config, expanded=False)
+
                     # Stopped Controllers
                     if stopped_controllers:
                         st.warning("💤 **Stopped Controllers:** Controllers that are paused or stopped")
@@ -283,6 +290,13 @@ def render_bot_card(bot_name):
                                 with st.spinner(f"Starting {len(selected_stopped)} controller(s)..."):
                                     start_controllers(bot_name, selected_stopped)
                                     time.sleep(1)
+
+                        with st.expander("🔧 Stopped Controller Parameters"):
+                            for ctrl_info in stopped_controllers:
+                                ctrl_id = ctrl_info["_controller_id"]
+                                config = next((c for c in controller_configs if c.get("id") == ctrl_id), {})
+                                st.markdown(f"**{ctrl_info['Controller']}** — `{ctrl_id}`")
+                                st.json(config, expanded=False)
 
                     # Error Controllers
                     if error_controllers:
