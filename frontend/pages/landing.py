@@ -128,13 +128,41 @@ total_closed = total_tp + total_sl + total_ts + total_tl + total_es
 win_count = total_tp + total_ts
 win_rate = win_count / total_closed if total_closed > 0 else None
 
+# Compute 7-day portfolio PNL%
+seven_day_pnl_pct = None
+try:
+    history = backend_api_client.portfolio.get_history()
+    history_records = history.get("data", []) if isinstance(history, dict) else history
+    if history_records:
+        _hist_data = []
+        for record in history_records:
+            _ts = record.get("timestamp")
+            _state = record.get("state", {})
+            _val = sum(
+                info.get("value", 0)
+                for exchanges in _state.values()
+                for tokens_info in exchanges.values()
+                for info in tokens_info
+            )
+            _hist_data.append({"timestamp": pd.to_datetime(_ts), "value": _val})
+        _df = pd.DataFrame(_hist_data).sort_values("timestamp")
+        if not _df.empty:
+            _current = _df.iloc[-1]["value"]
+            _cutoff = _df.iloc[-1]["timestamp"] - pd.Timedelta(days=7)
+            _older = _df[_df["timestamp"] <= _cutoff]
+            _base = _older.iloc[-1]["value"] if not _older.empty else _df.iloc[0]["value"]
+            if _base != 0:
+                seven_day_pnl_pct = (_current - _base) / _base
+except Exception:
+    pass
+
 # Live Dashboard Overview
 st.markdown("## 📊 Live Dashboard Overview")
 
 if api_error:
     st.error(f"Failed to connect to backend API: {api_error}")
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
     st.markdown(f"""
@@ -174,6 +202,22 @@ with col4:
         <h3>💹 NET PNL</h3>
         <div class="stat-number" style="color: {pnl_color};">{pnl_sign}${total_net_pnl:,.2f}</div>
         <p>${total_volume:,.2f} volume traded</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col5:
+    if seven_day_pnl_pct is not None:
+        _7d_color = "#4CAF50" if seven_day_pnl_pct >= 0 else "#ff6b6b"
+        _7d_sign = "+" if seven_day_pnl_pct >= 0 else ""
+        _7d_display = f"{_7d_sign}{seven_day_pnl_pct:.2%}"
+    else:
+        _7d_color = "#888"
+        _7d_display = "N/A"
+    st.markdown(f"""
+    <div class="metric-card">
+        <h3>📅 7D PNL (%)</h3>
+        <div class="stat-number" style="color: {_7d_color};">{_7d_display}</div>
+        <p>Portfolio 7-day change</p>
     </div>
     """, unsafe_allow_html=True)
 

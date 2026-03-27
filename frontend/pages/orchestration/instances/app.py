@@ -1,7 +1,10 @@
+import re
 import time
+from datetime import datetime, timezone
 
 import pandas as pd
 import streamlit as st
+from urllib.parse import quote
 
 from frontend.st_utils import get_backend_api_client, initialize_st_page
 
@@ -81,6 +84,19 @@ def start_controllers(bot_name, controllers):
         st.session_state.auto_refresh_enabled = False
 
     return success_count > 0
+
+
+def parse_bot_launch_time(bot_name):
+    """Extract launch datetime from bot name pattern …-YYYYMMDD-HHMMSS."""
+    match = re.search(r'(\d{8})-(\d{6})$', bot_name)
+    if match:
+        try:
+            return datetime.strptime(
+                f"{match.group(1)}-{match.group(2)}", "%Y%m%d-%H%M%S"
+            ).replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return None
 
 
 def render_bot_card(bot_name):
@@ -202,8 +218,16 @@ def render_bot_card(bot_name):
 
                     total_global_pnl_pct = total_global_pnl_quote / total_volume_traded if total_volume_traded > 0 else 0
 
+                    # Per-bot 7D PNL%: if bot launched within last 7 days, current session = 7D window
+                    launch_time = parse_bot_launch_time(bot_name)
+                    if launch_time is not None:
+                        bot_age_days = (datetime.now(timezone.utc) - launch_time).total_seconds() / 86400
+                        seven_day_pnl_pct = total_global_pnl_pct if bot_age_days <= 7 else None
+                    else:
+                        seven_day_pnl_pct = None
+
                     # Display metrics
-                    col1, col2, col3, col4 = st.columns(4)
+                    col1, col2, col3, col4, col5 = st.columns(5)
 
                     with col1:
                         st.metric("🏦 NET PNL", f"${total_global_pnl_quote:.2f}")
@@ -213,6 +237,11 @@ def render_bot_card(bot_name):
                         st.metric("📊 NET PNL (%)", f"{total_global_pnl_pct:.2%}")
                     with col4:
                         st.metric("💸 Volume Traded", f"${total_volume_traded:.2f}")
+                    with col5:
+                        if seven_day_pnl_pct is not None:
+                            st.metric("📅 7D PNL (%)", f"{seven_day_pnl_pct:.2%}")
+                        else:
+                            st.metric("📅 7D PNL (%)", "N/A")
 
                     # Active Controllers
                     if active_controllers:
@@ -304,26 +333,10 @@ def render_bot_card(bot_name):
                         error_df = pd.DataFrame(error_controllers)
                         st.dataframe(error_df, use_container_width=True, hide_index=True)
 
-                # Logs sections (available for both running and stopped bots)
-                with st.expander("📋 Error Logs"):
-                    if error_logs:
-                        for log in error_logs[:50]:
-                            timestamp = log.get("timestamp", "")
-                            message = log.get("msg", "")
-                            logger_name = log.get("logger_name", "")
-                            st.text(f"{timestamp} - {logger_name}: {message}")
-                    else:
-                        st.info("No error logs available.")
-
-                with st.expander("📝 General Logs"):
-                    if general_logs:
-                        for log in general_logs[:50]:
-                            timestamp = pd.to_datetime(int(log.get("timestamp", 0)), unit="s")
-                            message = log.get("msg", "")
-                            logger_name = log.get("logger_name", "")
-                            st.text(f"{timestamp} - {logger_name}: {message}")
-                    else:
-                        st.info("No general logs available.")
+                # Datadog logs link
+                datadog_query = quote(f"@bot_name:{bot_name}")
+                datadog_url = f"https://app.us5.datadoghq.com/logs?query={datadog_query}"
+                st.markdown(f"📋 [View Logs in Datadog ↗]({datadog_url})")
 
     except Exception as e:
         with st.container(border=True):

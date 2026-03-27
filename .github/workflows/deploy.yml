@@ -18,7 +18,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT }}
           script: |
-            cd /home/deploy/dashboard
+            cd /home/deploy/metal_deploy
             git pull origin main
             cd /home/deploy/hummingbot-api
             docker compose up -d dashboard
