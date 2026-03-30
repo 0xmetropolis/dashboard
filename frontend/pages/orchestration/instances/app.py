@@ -145,8 +145,12 @@ def fetch_current_price(connector_name: str, trading_pair: str):
         response = backend_api_client.market_data.get_prices(
             get_price_connector(connector_name), trading_pair
         )
-        if isinstance(response, dict) and response.get("status") == "success":
-            return response.get("data", {}).get(trading_pair)
+        if isinstance(response, dict):
+            if response.get("status") == "success":
+                return response.get("data", {}).get(trading_pair)
+            if "prices" in response:
+                return response.get("prices", {}).get(trading_pair)
+            return response.get(trading_pair)
     except Exception:
         pass
     return None
