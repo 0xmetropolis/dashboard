@@ -106,8 +106,11 @@ def is_simulated_connector(connector_name: str) -> bool:
 
 
 def get_price_connector(connector_name: str) -> str:
-    """Strip paper_trade suffix so we can look up real market prices."""
-    return connector_name.replace("_paper_trade", "")
+    """Normalize simulated connectors to their live market-data equivalent."""
+    normalized = connector_name.replace("_paper_trade", "")
+    normalized = re.sub(r"(^|[_-])testnet(?=$|[_-])", r"\1", normalized)
+    normalized = re.sub(r"[_-]{2,}", "_", normalized).strip("_-")
+    return normalized or connector_name
 
 
 BNH_PRICES_FILE = Path(__file__).parents[4] / "data" / "bnh_entry_prices.json"
