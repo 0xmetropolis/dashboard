@@ -105,6 +105,21 @@ def is_simulated_connector(connector_name: str) -> bool:
     return connector_name.endswith("_paper_trade") or "testnet" in connector_name
 
 
+def get_simulation_label(controller_configs: list[dict]) -> str | None:
+    labels = []
+    for config in controller_configs:
+        connector_name = config.get("connector_name", "").lower()
+        if connector_name.endswith("_paper_trade"):
+            labels.append("PAPER")
+        elif "testnet" in connector_name:
+            labels.append("TESTNET")
+
+    unique_labels = sorted(set(labels))
+    if not unique_labels:
+        return None
+    return "/".join(unique_labels)
+
+
 def get_price_connector(connector_name: str) -> str:
     """Normalize simulated connectors to their live market-data equivalent."""
     normalized = connector_name.replace("_paper_trade", "")
@@ -192,13 +207,14 @@ def render_bot_card(bot_name):
                     is_simulated_connector(c.get("connector_name", ""))
                     for c in controller_configs
                 )
+                simulation_label = get_simulation_label(controller_configs)
 
                 # Bot header
                 col1, col2, col3 = st.columns([2, 1, 1])
                 with col1:
                     if is_running:
                         if simulated:
-                            st.info(f"📄 **{bot_name}** - Running (Paper/Testnet)")
+                            st.info(f"📄 **{bot_name}** - Running ({simulation_label})")
                         else:
                             st.success(f"🤖 **{bot_name}** - Running")
                     else:
@@ -320,7 +336,10 @@ def render_bot_card(bot_name):
 
                     # Active Controllers
                     if active_controllers:
-                        st.success("🚀 **Active Controllers:** Controllers currently running and trading")
+                        if simulated:
+                            st.info("🚀 **Active Controllers:** Controllers currently running and trading")
+                        else:
+                            st.success("🚀 **Active Controllers:** Controllers currently running and trading")
                         active_df = pd.DataFrame(active_controllers)
 
                         edited_active_df = st.data_editor(
