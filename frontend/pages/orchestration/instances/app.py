@@ -1,10 +1,12 @@
+import json
 import re
 import time
 from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import quote
 
 import pandas as pd
 import streamlit as st
-from urllib.parse import quote
 
 from frontend.st_utils import get_backend_api_client, initialize_st_page
 
@@ -99,6 +101,54 @@ def parse_bot_launch_time(bot_name):
     return None
 
 
+def is_simulated_connector(connector_name: str) -> bool:
+    return connector_name.endswith("_paper_trade") or "testnet" in connector_name
+
+
+def get_price_connector(connector_name: str) -> str:
+    """Strip paper_trade suffix so we can look up real market prices."""
+    return connector_name.replace("_paper_trade", "")
+
+
+BNH_PRICES_FILE = Path(__file__).parents[4] / "data" / "bnh_entry_prices.json"
+
+
+def _load_bnh_prices() -> dict:
+    if BNH_PRICES_FILE.exists():
+        try:
+            return json.loads(BNH_PRICES_FILE.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def _save_bnh_prices(data: dict):
+    BNH_PRICES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    BNH_PRICES_FILE.write_text(json.dumps(data, indent=2))
+
+
+def get_bnh_entry_price(bot_name: str, controller_id: str, current_price: float):
+    """Return the stored entry price, writing it the first time it is seen."""
+    key = f"{bot_name}_{controller_id}"
+    prices = _load_bnh_prices()
+    if key not in prices and current_price is not None:
+        prices[key] = current_price
+        _save_bnh_prices(prices)
+    return prices.get(key)
+
+
+def fetch_current_price(connector_name: str, trading_pair: str):
+    try:
+        response = backend_api_client.market_data.get_prices(
+            get_price_connector(connector_name), trading_pair
+        )
+        if isinstance(response, dict) and response.get("status") == "success":
+            return response.get("data", {}).get(trading_pair)
+    except Exception:
+        pass
+    return None
+
+
 def render_bot_card(bot_name):
     """Render a bot performance card using native Streamlit components."""
     try:
@@ -131,14 +181,19 @@ def render_bot_card(bot_name):
                 bot_data = bot_status.get("data", {})
                 is_running = bot_data.get("status") == "running"
                 performance = bot_data.get("performance", {})
-                error_logs = bot_data.get("error_logs", [])
-                general_logs = bot_data.get("general_logs", [])
+                simulated = bool(controller_configs) and all(
+                    is_simulated_connector(c.get("connector_name", ""))
+                    for c in controller_configs
+                )
 
                 # Bot header
                 col1, col2, col3 = st.columns([2, 1, 1])
                 with col1:
                     if is_running:
-                        st.success(f"🤖 **{bot_name}** - Running")
+                        if simulated:
+                            st.info(f"📄 **{bot_name}** - Running (Paper/Testnet)")
+                        else:
+                            st.success(f"🤖 **{bot_name}** - Running")
                     else:
                         st.warning(f"🤖 **{bot_name}** - Stopped")
 
@@ -184,6 +239,16 @@ def render_bot_card(bot_name):
                         global_pnl_quote = controller_performance.get("global_pnl_quote", 0)
                         volume_traded = controller_performance.get("volume_traded", 0)
 
+                        # Buy-and-hold benchmark
+                        current_price = None
+                        entry_price = None
+                        bnh_return = None
+                        if connector_name != "N/A" and trading_pair != "N/A":
+                            current_price = fetch_current_price(connector_name, trading_pair)
+                            entry_price = get_bnh_entry_price(bot_name, controller, current_price)
+                            if entry_price and current_price and entry_price != 0:
+                                bnh_return = (current_price - entry_price) / entry_price
+
                         close_types = controller_performance.get("close_type_counts", {})
                         tp = close_types.get("CloseType.TAKE_PROFIT", 0)
                         sl = close_types.get("CloseType.STOP_LOSS", 0)
@@ -204,6 +269,9 @@ def render_bot_card(bot_name):
                             "NET PNL ($)": round(global_pnl_quote, 2),
                             "Volume ($)": round(volume_traded, 2),
                             "Close Types": close_types_str,
+                            "B&H Entry ($)": round(entry_price, 4) if entry_price is not None else "—",
+                            "B&H Current ($)": round(current_price, 4) if current_price is not None else "—",
+                            "B&H Return (%)": f"{bnh_return:.2%}" if bnh_return is not None else "—",
                             "_controller_id": controller
                         }
 

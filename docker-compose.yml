@@ -7,7 +7,10 @@ services:
     environment:
         - AUTH_SYSTEM_ENABLED=True
         - BACKEND_API_HOST=https://api.metallorum.duckdns.org
-        # - BACKEND_API_PORT=80
+        # If you are running the API directly on the Docker host instead of via
+        # the public reverse proxy, swap the line above for the host alias below.
+        # - BACKEND_API_HOST=host.docker.internal
+        # - BACKEND_API_PORT=8000
         - BACKEND_API_USERNAME=metal
         - BACKEND_API_PASSWORD=Sk:6z77oN7-/BCo}19R
     volumes:
