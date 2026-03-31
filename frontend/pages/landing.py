@@ -6,6 +6,11 @@ from CONFIG import AUTH_SYSTEM_ENABLED
 from frontend.st_utils import get_backend_api_client, initialize_st_page
 
 
+def _is_simulated_exchange(name: str) -> bool:
+    normalized = (name or "").lower()
+    return "testnet" in normalized or normalized.endswith("_paper_trade") or normalized.endswith("_paper_perp")
+
+
 def _portfolio_value(state: dict) -> float:
     """Sum portfolio value, excluding paper-trading accounts, testnet exchanges,
     and duplicate wallets (same exchange + identical token holdings)."""
@@ -13,7 +18,7 @@ def _portfolio_value(state: dict) -> float:
     total = 0.0
     for account, exchanges in state.items():
         for exchange, tokens_info in exchanges.items():
-            if "testnet" in exchange:
+            if _is_simulated_exchange(exchange):
                 continue
             # Deduplicate: same exchange + same token set = same wallet under different credentials
             fingerprint = (exchange, frozenset((t.get("token"), round(t.get("value", 0), 4)) for t in tokens_info))
@@ -22,6 +27,7 @@ def _portfolio_value(state: dict) -> float:
             seen.add(fingerprint)
             total += sum(t.get("value", 0) for t in tokens_info)
     return total
+
 
 initialize_st_page(
     layout="wide",
@@ -111,7 +117,7 @@ try:
                             controller_config = next(
                                 (c for c in controller_configs if c.get("id") == controller_id), {}
                             )
-                            if "testnet" in controller_config.get("connector_name", ""):
+                            if _is_simulated_exchange(controller_config.get("connector_name", "")):
                                 continue
                             cp = inner_dict.get("performance", {})
                             total_net_pnl += cp.get("global_pnl_quote", 0)
@@ -163,7 +169,7 @@ try:
             _ts = pd.to_datetime(_rec.get("timestamp"))
             for _acct, _exs in _rec.get("state", {}).items():
                 for _ex, _toks in _exs.items():
-                    if "testnet" in _ex:
+                    if _is_simulated_exchange(_ex):
                         continue
                     _key = (_acct, _ex)
                     _val = sum(t.get("value", 0) for t in _toks)
@@ -177,7 +183,7 @@ try:
         _keys_seen = set()
         for _acct, _exs in _sorted[-1].get("state", {}).items():
             for _ex, _toks in _exs.items():
-                if "testnet" in _ex:
+                if _is_simulated_exchange(_ex):
                     continue
                 _key = (_acct, _ex)
                 if _key in _keys_seen:
@@ -308,6 +314,7 @@ with col2:
         for ctrl in controllers_data:
             status_icon = "🟢" if ctrl["active"] else "🔴"
             status_label = "Active" if ctrl["active"] else "Stopped"
+            status_class = "status-active" if ctrl["active"] else "status-inactive"
             pnl_color = "#4CAF50" if ctrl["pnl"] >= 0 else "#ff6b6b"
             pnl_sign = "+" if ctrl["pnl"] >= 0 else ""
             st.markdown(f"""
@@ -316,7 +323,7 @@ with col2:
                     <div>
                         <strong>{ctrl['name']}</strong><br>
                         <small>{ctrl['connector']} · {ctrl['pair']}</small><br>
-                        <span class="{'status-active' if ctrl['active'] else 'status-inactive'}">{status_icon} {status_label}</span>
+                        <span class="{status_class}">{status_icon} {status_label}</span>
                     </div>
                     <div style="text-align: right;">
                         <span style="color: {pnl_color}; font-weight: bold;">{pnl_sign}${ctrl['pnl']:,.2f}</span>

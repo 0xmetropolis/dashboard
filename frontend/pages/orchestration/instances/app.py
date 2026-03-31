@@ -22,6 +22,8 @@ if "auto_refresh_enabled" not in st.session_state:
 # Set refresh interval
 REFRESH_INTERVAL = 10  # seconds
 
+PAPER_CONNECTOR_SUFFIXES = ("_paper_trade", "_paper_perp")
+
 
 def stop_bot(bot_name):
     """Stop a running bot."""
@@ -102,15 +104,16 @@ def parse_bot_launch_time(bot_name):
 
 
 def is_simulated_connector(connector_name: str) -> bool:
-    return connector_name.endswith("_paper_trade") or "testnet" in connector_name
+    normalized = (connector_name or "").lower()
+    return normalized.endswith(PAPER_CONNECTOR_SUFFIXES) or "testnet" in normalized
 
 
 def get_simulation_label(controller_configs: list[dict]) -> str | None:
     labels = []
     for config in controller_configs:
         connector_name = config.get("connector_name", "").lower()
-        if connector_name.endswith("_paper_trade"):
-            labels.append("PAPER")
+        if connector_name.endswith(PAPER_CONNECTOR_SUFFIXES):
+            labels.append("PAPER TRADE")
         elif "testnet" in connector_name:
             labels.append("TESTNET")
 
@@ -122,7 +125,9 @@ def get_simulation_label(controller_configs: list[dict]) -> str | None:
 
 def get_price_connector(connector_name: str) -> str:
     """Normalize simulated connectors to their live market-data equivalent."""
-    normalized = connector_name.replace("_paper_trade", "")
+    normalized = connector_name
+    for suffix in PAPER_CONNECTOR_SUFFIXES:
+        normalized = normalized.replace(suffix, "")
     normalized = re.sub(r"(^|[_-])testnet(?=$|[_-])", r"\1", normalized)
     normalized = re.sub(r"[_-]{2,}", "_", normalized).strip("_-")
     return normalized or connector_name
