@@ -513,8 +513,38 @@ def render_bot_card(bot_name):
 
                 # Datadog logs link
                 datadog_query = quote(f"@bot_name:{bot_name}")
-                datadog_url = f"https://app.us5.datadoghq.com/logs?query={datadog_query}"
+                datadog_url = (
+                    f"https://us5.datadoghq.com/logs"
+                    f"?query={datadog_query}"
+                    f"&cols=host%2Cservice"
+                    f"&index=%2A"
+                    f"&messageDisplay=inline"
+                    f"&stream=true"
+                    f"&viz=stream"
+                    f"&live=true"
+                )
                 st.markdown(f"📋 [View Logs in Datadog ↗]({datadog_url})")
+
+                # Prediction container logs link for ai_livestream bots
+                is_ai_livestream = any(
+                    c.get("controller_name") == "ai_livestream"
+                    for c in controller_configs
+                )
+                service_match = re.match(r'^bot-(.+)-\d{8}-\d{6}$', bot_name)
+                service_name = service_match.group(1) if service_match else None
+                if is_ai_livestream and service_name:
+                    pred_query = quote(f"service:prediction-{service_name}")
+                    pred_url = (
+                        f"https://us5.datadoghq.com/logs"
+                        f"?query={pred_query}"
+                        f"&cols=host%2Cservice"
+                        f"&index=%2A"
+                        f"&messageDisplay=inline"
+                        f"&stream=true"
+                        f"&viz=stream"
+                        f"&live=true"
+                    )
+                    st.markdown(f"🤖 [View Prediction Container Logs ↗]({pred_url})")
 
     except Exception as e:
         with st.container(border=True):
