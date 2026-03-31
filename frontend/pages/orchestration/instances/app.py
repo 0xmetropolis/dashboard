@@ -544,7 +544,7 @@ def render_bot_card(bot_name):
                         f"&viz=stream"
                         f"&live=true"
                     )
-                    st.markdown(f"🤖 [View Prediction Container Logs ↗]({pred_url})")
+                    st.markdown(f"🔮 [View Prediction Container Logs ↗]({pred_url})")
 
     except Exception as e:
         with st.container(border=True):
