@@ -108,6 +108,77 @@ def is_simulated_connector(connector_name: str) -> bool:
     return normalized.endswith(PAPER_CONNECTOR_SUFFIXES) or "testnet" in normalized
 
 
+def _format_config_value(key: str, value) -> str:
+    """Format a config value based on its key/type."""
+    # Fraction-of-price fields → display as percentage
+    FRACTION_KEYS = {"stop_loss", "take_profit", "trailing_stop"}
+    # Duration fields (seconds) → human-readable
+    SECONDS_KEYS = {"time_limit", "cooldown_time"}
+
+    if isinstance(value, (dict, list)):
+        return json.dumps(value)
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if value is None:
+        return "—"
+    if isinstance(value, float) and key in FRACTION_KEYS:
+        return f"{value * 100:.2f}%"
+    if isinstance(value, (int, float)) and key in SECONDS_KEYS:
+        secs = int(value)
+        if secs >= 3600:
+            return f"{secs // 3600}h {(secs % 3600) // 60}m"
+        if secs >= 60:
+            return f"{secs // 60}m {secs % 60}s" if secs % 60 else f"{secs // 60}m"
+        return f"{secs}s"
+    return str(value)
+
+
+def render_controller_config_table(config: dict):
+    """Render a controller config dict as a clean two-column table."""
+    SKIP_KEYS = {"id"}
+
+    rows = []
+    for key, value in config.items():
+        if key in SKIP_KEYS:
+            continue
+        label = key.replace("_", " ").title()
+        rows.append({"Parameter": label, "Value": _format_config_value(key, value)})
+
+    if rows:
+        df = pd.DataFrame(rows)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.caption("No configuration available.")
+
+
+def render_bot_drawdown_table(deployment_config: dict):
+    """Render bot-level drawdown settings as a small table."""
+    max_global = deployment_config.get("max_global_drawdown_quote")
+    max_ctrl = deployment_config.get("max_controller_drawdown_quote")
+
+    rows = [
+        {"Parameter": "Max Global Drawdown", "Value": f"{max_global}" if max_global is not None else "—"},
+        {"Parameter": "Max Controller Drawdown", "Value": f"{max_ctrl}" if max_ctrl is not None else "—"},
+    ]
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+
+def get_bot_deployment_config(bot_name: str) -> dict:
+    """Fetch the deployment config for a bot from its most recent bot run."""
+    try:
+        result = backend_api_client.bot_orchestration.get_bot_runs(bot_name=bot_name, limit=1)
+        runs = result.get("data", [])
+        if not runs:
+            return {}
+        raw = runs[0].get("deployment_config")
+        if not raw:
+            return {}
+        return json.loads(raw) if isinstance(raw, str) else raw
+    except Exception:
+        return {}
+
+
 def get_simulation_label(controller_configs: list[dict]) -> str | None:
     labels = []
     for config in controller_configs:
@@ -184,6 +255,7 @@ def render_bot_card(bot_name):
 
         # Only try to get controller configs if bot exists and is running
         controller_configs = []
+        deployment_config = {}
         if bot_status.get("status") == "success":
             bot_data = bot_status.get("data", {})
             is_running = bot_data.get("status") == "running"
@@ -195,6 +267,7 @@ def render_bot_card(bot_name):
                     # If controller configs fail, continue without them
                     st.warning(f"Could not fetch controller configs for {bot_name}: {e}")
                     controller_configs = []
+                deployment_config = get_bot_deployment_config(bot_name)
 
         with st.container(border=True):
 
@@ -378,11 +451,14 @@ def render_bot_card(bot_name):
                                     time.sleep(1)
 
                         with st.expander("🔧 Active Controller Parameters"):
+                            st.markdown("**Bot Drawdown Guards**")
+                            render_bot_drawdown_table(deployment_config)
+                            st.divider()
                             for ctrl_info in active_controllers:
                                 ctrl_id = ctrl_info["_controller_id"]
                                 config = next((c for c in controller_configs if c.get("id") == ctrl_id), {})
                                 st.markdown(f"**{ctrl_info['Controller']}** — `{ctrl_id}`")
-                                st.json(config, expanded=False)
+                                render_controller_config_table(config)
 
                     # Stopped Controllers
                     if stopped_controllers:
@@ -420,11 +496,14 @@ def render_bot_card(bot_name):
                                     time.sleep(1)
 
                         with st.expander("🔧 Stopped Controller Parameters"):
+                            st.markdown("**Bot Drawdown Guards**")
+                            render_bot_drawdown_table(deployment_config)
+                            st.divider()
                             for ctrl_info in stopped_controllers:
                                 ctrl_id = ctrl_info["_controller_id"]
                                 config = next((c for c in controller_configs if c.get("id") == ctrl_id), {})
                                 st.markdown(f"**{ctrl_info['Controller']}** — `{ctrl_id}`")
-                                st.json(config, expanded=False)
+                                render_controller_config_table(config)
 
                     # Error Controllers
                     if error_controllers:
