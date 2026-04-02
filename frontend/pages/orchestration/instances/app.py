@@ -24,6 +24,12 @@ REFRESH_INTERVAL = 10  # seconds
 
 PAPER_CONNECTOR_SUFFIXES = ("_paper_trade", "_paper_perp")
 
+# Some connectors require auth even for public market data — map them to a
+# functionally equivalent connector that the API can query without credentials.
+PRICE_CONNECTOR_OVERRIDES = {
+    "derive_perpetual": "hyperliquid_perpetual",
+}
+
 
 def stop_bot(bot_name):
     """Stop a running bot."""
@@ -201,7 +207,8 @@ def get_price_connector(connector_name: str) -> str:
         normalized = normalized.replace(suffix, "")
     normalized = re.sub(r"(^|[_-])testnet(?=$|[_-])", r"\1", normalized)
     normalized = re.sub(r"[_-]{2,}", "_", normalized).strip("_-")
-    return normalized or connector_name
+    normalized = normalized or connector_name
+    return PRICE_CONNECTOR_OVERRIDES.get(normalized, normalized)
 
 
 BNH_PRICES_FILE = Path(__file__).parents[4] / "data" / "bnh_entry_prices.json"
