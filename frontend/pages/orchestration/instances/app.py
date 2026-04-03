@@ -188,7 +188,8 @@ def get_bot_deployment_config(bot_name: str) -> dict:
 def get_simulation_label(controller_configs: list[dict]) -> str | None:
     labels = []
     for config in controller_configs:
-        connector_name = config.get("connector_name", "").lower()
+        connector_name = config.get("connector_name") or (config.get("my_exchange") or {}).get("connector_name") or ""
+        connector_name = connector_name.lower()
         if connector_name.endswith(PAPER_CONNECTOR_SUFFIXES):
             labels.append("PAPER TRADE")
         elif "testnet" in connector_name:
@@ -338,8 +339,12 @@ def render_bot_card(bot_name):
 
                         controller_name = controller_config.get("controller_name", controller)
 
-                        connector_name = controller_config.get("connector_name", "N/A")
-                        trading_pair = controller_config.get("trading_pair", "N/A")
+                        connector_name = controller_config.get("connector_name")
+                        trading_pair = controller_config.get("trading_pair")
+                        if not connector_name or not trading_pair:
+                            my_exchange = controller_config.get("my_exchange") or {}
+                            connector_name = my_exchange.get("connector_name", connector_name or "N/A")
+                            trading_pair = my_exchange.get("trading_pair", trading_pair or "N/A")
                         kill_switch_status = controller_config.get("manual_kill_switch", False)
 
                         realized_pnl_quote = controller_performance.get("realized_pnl_quote", 0)
