@@ -114,14 +114,31 @@ def is_simulated_connector(connector_name: str) -> bool:
     return normalized.endswith(PAPER_CONNECTOR_SUFFIXES) or "testnet" in normalized
 
 
+def iter_controller_connectors(controller_config: dict):
+    connector_name = controller_config.get("connector_name")
+    if connector_name:
+        yield connector_name
+    for field_name in ("exchange_pair_1", "exchange_pair_2"):
+        exchange_pair = controller_config.get(field_name, {}) or {}
+        pair_connector_name = exchange_pair.get("connector_name")
+        if pair_connector_name:
+            yield pair_connector_name
+
+
+def is_simulated_controller(controller_config: dict) -> bool:
+    connectors = list(iter_controller_connectors(controller_config))
+    return bool(connectors) and all(is_simulated_connector(connector_name) for connector_name in connectors)
+
+
 def get_simulation_label(controller_configs: list[dict]) -> str | None:
     labels = []
     for config in controller_configs:
-        connector_name = config.get("connector_name", "").lower()
-        if connector_name.endswith(PAPER_CONNECTOR_SUFFIXES):
-            labels.append("PAPER TRADE")
-        elif "testnet" in connector_name:
-            labels.append("TESTNET")
+        for connector_name in iter_controller_connectors(config):
+            connector_name = connector_name.lower()
+            if connector_name.endswith(PAPER_CONNECTOR_SUFFIXES):
+                labels.append("PAPER TRADE")
+            elif "testnet" in connector_name:
+                labels.append("TESTNET")
 
     unique_labels = sorted(set(labels))
     if not unique_labels:
@@ -183,6 +200,41 @@ def fetch_current_price(connector_name: str, trading_pair: str):
     return None
 
 
+def get_controller_market_display(controller_config: dict):
+    connector_name = controller_config.get("connector_name")
+    trading_pair = controller_config.get("trading_pair")
+    if connector_name and trading_pair:
+        return connector_name, trading_pair, connector_name, trading_pair
+
+    my_exchange = controller_config.get("my_exchange", {}) or {}
+    if my_exchange:
+        cn = my_exchange.get("connector_name", "N/A")
+        tp = my_exchange.get("trading_pair", "N/A")
+        return cn, tp, cn, tp
+
+    exchange_pair_1 = controller_config.get("exchange_pair_1", {}) or {}
+    exchange_pair_2 = controller_config.get("exchange_pair_2", {}) or {}
+    if exchange_pair_1 and exchange_pair_2:
+        display_connector = (
+            f"{exchange_pair_1.get('connector_name', 'N/A')} ↔ "
+            f"{exchange_pair_2.get('connector_name', 'N/A')}"
+        )
+        trading_pair_1 = exchange_pair_1.get("trading_pair", "N/A")
+        trading_pair_2 = exchange_pair_2.get("trading_pair", "N/A")
+        display_pair = trading_pair_1 if trading_pair_1 == trading_pair_2 else f"{trading_pair_1} ↔ {trading_pair_2}"
+        return display_connector, display_pair, None, None
+
+    return "N/A", "N/A", None, None
+
+
+def format_directional_balance(direction_state: dict | None) -> str:
+    if not isinstance(direction_state, dict) or not direction_state:
+        return "—"
+    pair_1_long = direction_state.get("pair_1_long_pair_2_short", 0)
+    pair_1_short = direction_state.get("pair_1_short_pair_2_long", 0)
+    return f"P1 L/P2 S: {pair_1_long} | P1 S/P2 L: {pair_1_short}"
+
+
 def render_bot_card(bot_name):
     """Render a bot performance card using native Streamlit components."""
     try:
@@ -215,10 +267,7 @@ def render_bot_card(bot_name):
                 bot_data = bot_status.get("data", {})
                 is_running = bot_data.get("status") == "running"
                 performance = bot_data.get("performance", {})
-                simulated = bool(controller_configs) and all(
-                    is_simulated_connector(c.get("connector_name", ""))
-                    for c in controller_configs
-                )
+                simulated = bool(controller_configs) and all(is_simulated_controller(c) for c in controller_configs)
                 simulation_label = get_simulation_label(controller_configs)
 
                 # Bot header
@@ -263,23 +312,41 @@ def render_bot_card(bot_name):
                             (config for config in controller_configs if config.get("id") == controller), {}
                         )
 
-                        controller_name = controller_config.get("controller_name", controller)
+                        controller_custom_info = inner_dict.get("custom_info", {})
+                        controller_name = (
+                            controller_custom_info.get("controller_name")
+                            or controller_config.get("controller_name")
+                            or controller
+                        )
 
-                        connector_name = controller_config.get("connector_name", "N/A")
-                        trading_pair = controller_config.get("trading_pair", "N/A")
+                        connector_name, trading_pair, benchmark_connector, benchmark_trading_pair = (
+                            get_controller_market_display(controller_config)
+                        )
                         kill_switch_status = controller_config.get("manual_kill_switch", False)
 
                         realized_pnl_quote = controller_performance.get("realized_pnl_quote", 0)
                         unrealized_pnl_quote = controller_performance.get("unrealized_pnl_quote", 0)
                         global_pnl_quote = controller_performance.get("global_pnl_quote", 0)
                         volume_traded = controller_performance.get("volume_traded", 0)
+                        best_direction = controller_custom_info.get("best_direction", "—")
+                        best_spread_pct = controller_custom_info.get("best_spread_pct")
+                        directional_balance = format_directional_balance(
+                            controller_custom_info.get("directional_balance")
+                        )
+                        state_flags = []
+                        if controller_custom_info.get("cooldown_active"):
+                            state_flags.append("cooldown")
+                        if controller_custom_info.get("await_spread_reset"):
+                            state_flags.append("await_reset")
+                        if not state_flags:
+                            state_flags.append("ready")
 
                         # Buy-and-hold benchmark
                         current_price = None
                         entry_price = None
                         bnh_return = None
-                        if connector_name != "N/A" and trading_pair != "N/A":
-                            current_price = fetch_current_price(connector_name, trading_pair)
+                        if benchmark_connector and benchmark_trading_pair:
+                            current_price = fetch_current_price(benchmark_connector, benchmark_trading_pair)
                             entry_price = get_bnh_entry_price(bot_name, controller, current_price)
                             if entry_price and current_price and entry_price != 0:
                                 bnh_return = (current_price - entry_price) / entry_price
@@ -299,6 +366,10 @@ def render_bot_card(bot_name):
                             "Controller": controller_name,
                             "Connector": connector_name,
                             "Trading Pair": trading_pair,
+                            "Best Direction": best_direction,
+                            "Best Spread (%)": round(best_spread_pct, 4) if best_spread_pct is not None else "—",
+                            "Directional Balance": directional_balance,
+                            "State": " | ".join(state_flags),
                             "Realized PNL ($)": round(realized_pnl_quote, 2),
                             "Unrealized PNL ($)": round(unrealized_pnl_quote, 2),
                             "NET PNL ($)": round(global_pnl_quote, 2),
@@ -388,7 +459,10 @@ def render_bot_card(bot_name):
                             for ctrl_info in active_controllers:
                                 ctrl_id = ctrl_info["_controller_id"]
                                 config = next((c for c in controller_configs if c.get("id") == ctrl_id), {})
+                                custom_info = performance.get(ctrl_id, {}).get("custom_info", {})
                                 st.markdown(f"**{ctrl_info['Controller']}** — `{ctrl_id}`")
+                                if custom_info:
+                                    st.json({"custom_info": custom_info}, expanded=False)
                                 st.json(config, expanded=False)
 
                     # Stopped Controllers
@@ -430,7 +504,10 @@ def render_bot_card(bot_name):
                             for ctrl_info in stopped_controllers:
                                 ctrl_id = ctrl_info["_controller_id"]
                                 config = next((c for c in controller_configs if c.get("id") == ctrl_id), {})
+                                custom_info = performance.get(ctrl_id, {}).get("custom_info", {})
                                 st.markdown(f"**{ctrl_info['Controller']}** — `{ctrl_id}`")
+                                if custom_info:
+                                    st.json({"custom_info": custom_info}, expanded=False)
                                 st.json(config, expanded=False)
 
                     # Error Controllers
