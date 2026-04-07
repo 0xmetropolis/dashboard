@@ -48,6 +48,10 @@ jobs:
           port: ${{ secrets.SERVER_PORT }}
           command_timeout: 10m
           script: |
+            cd /home/deploy/dashboard
+            git fetch origin main
+            git reset --hard origin/main
             cd /home/deploy/metal_deploy
             docker compose pull dashboard
             docker compose up -d --no-deps dashboard
+            docker restart dashboard
