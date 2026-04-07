@@ -289,11 +289,25 @@ def render_bot_card(bot_name):
                 bot_data = bot_status.get("data", {})
                 is_running = bot_data.get("status") == "running"
                 performance = bot_data.get("performance", {})
-                simulated = bool(controller_configs) and all(
-                    is_simulated_connector(c.get("connector_name", ""))
-                    for c in controller_configs
+
+                def _get_connector(c):
+                    return (
+                        c.get("connector_name")
+                        or (c.get("my_exchange") or {})
+                        .get("connector_name") or ""
+                    )
+
+                name_is_paper = "paper" in bot_name.lower()
+                simulated = name_is_paper or (
+                    bool(controller_configs) and all(
+                        is_simulated_connector(_get_connector(c))
+                        for c in controller_configs
+                    )
                 )
-                simulation_label = get_simulation_label(controller_configs)
+                simulation_label = (
+                    get_simulation_label(controller_configs)
+                    or ("PAPER TRADE" if name_is_paper else None)
+                )
 
                 # Bot header
                 col1, col2, col3 = st.columns([2, 1, 1])
