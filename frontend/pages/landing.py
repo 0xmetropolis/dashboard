@@ -131,8 +131,20 @@ try:
                             controllers_data.append({
                                 "bot": bot_name,
                                 "name": controller_config.get("controller_name", controller_id),
-                                "connector": controller_config.get("connector_name", "N/A"),
-                                "pair": controller_config.get("trading_pair", "N/A"),
+                                "connector": controller_config.get("connector_name") or (
+                                    "{}/{}".format(
+                                        controller_config["leg_a"]["connector_name"],
+                                        controller_config["leg_b"]["connector_name"],
+                                    ) if controller_config.get("leg_a") and controller_config.get("leg_b")
+                                    else "N/A"
+                                ),
+                                "pair": controller_config.get("trading_pair") or (
+                                    "{}/{}".format(
+                                        controller_config["leg_a"]["trading_pair"],
+                                        controller_config["leg_b"]["trading_pair"],
+                                    ) if controller_config.get("leg_a") and controller_config.get("leg_b")
+                                    else "N/A"
+                                ),
                                 "pnl": cp.get("global_pnl_quote", 0),
                                 "active": not controller_config.get("manual_kill_switch", False),
                             })
