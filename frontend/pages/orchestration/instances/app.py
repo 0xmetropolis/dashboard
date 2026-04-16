@@ -357,8 +357,24 @@ def render_bot_card(bot_name):
                         trading_pair = controller_config.get("trading_pair")
                         if not connector_name or not trading_pair:
                             my_exchange = controller_config.get("my_exchange") or {}
-                            connector_name = my_exchange.get("connector_name", connector_name or "N/A")
-                            trading_pair = my_exchange.get("trading_pair", trading_pair or "N/A")
+                            leg_a = controller_config.get("leg_a") or {}
+                            leg_b = controller_config.get("leg_b") or {}
+                            if leg_a and leg_b:
+                                connector_name = "{}/{}".format(
+                                    leg_a.get("connector_name", ""),
+                                    leg_b.get("connector_name", ""),
+                                )
+                                trading_pair = "{}/{}".format(
+                                    leg_a.get("trading_pair", ""),
+                                    leg_b.get("trading_pair", ""),
+                                )
+                            else:
+                                connector_name = my_exchange.get(
+                                    "connector_name", connector_name or "N/A"
+                                )
+                                trading_pair = my_exchange.get(
+                                    "trading_pair", trading_pair or "N/A"
+                                )
                         kill_switch_status = controller_config.get("manual_kill_switch", False)
 
                         realized_pnl_quote = controller_performance.get("realized_pnl_quote", 0)
