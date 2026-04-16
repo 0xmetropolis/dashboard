@@ -355,6 +355,8 @@ def render_bot_card(bot_name):
 
                         connector_name = controller_config.get("connector_name")
                         trading_pair = controller_config.get("trading_pair")
+                        bnh_connector = connector_name
+                        bnh_pair = trading_pair
                         if not connector_name or not trading_pair:
                             my_exchange = controller_config.get("my_exchange") or {}
                             leg_a = controller_config.get("leg_a") or {}
@@ -368,6 +370,8 @@ def render_bot_card(bot_name):
                                     leg_a.get("trading_pair", ""),
                                     leg_b.get("trading_pair", ""),
                                 )
+                                bnh_connector = leg_a.get("connector_name")
+                                bnh_pair = leg_a.get("trading_pair")
                             else:
                                 connector_name = my_exchange.get(
                                     "connector_name", connector_name or "N/A"
@@ -375,6 +379,8 @@ def render_bot_card(bot_name):
                                 trading_pair = my_exchange.get(
                                     "trading_pair", trading_pair or "N/A"
                                 )
+                                bnh_connector = connector_name
+                                bnh_pair = trading_pair
                         kill_switch_status = controller_config.get("manual_kill_switch", False)
 
                         realized_pnl_quote = controller_performance.get("realized_pnl_quote", 0)
@@ -386,8 +392,8 @@ def render_bot_card(bot_name):
                         current_price = None
                         entry_price = None
                         bnh_return = None
-                        if connector_name != "N/A" and trading_pair != "N/A":
-                            current_price = fetch_current_price(connector_name, trading_pair)
+                        if bnh_connector and bnh_pair and bnh_connector != "N/A" and bnh_pair != "N/A":
+                            current_price = fetch_current_price(bnh_connector, bnh_pair)
                             entry_price = get_bnh_entry_price(bot_name, controller, current_price)
                             if entry_price and current_price and entry_price != 0:
                                 bnh_return = (current_price - entry_price) / entry_price
